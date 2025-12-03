@@ -3,14 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <title>AI vs AI Chess</title>
+
 <style>
   body { background:#111; color:#eee; font-family:Arial; }
 
-  /* MAKE THE BOARD ACTUALLY VISIBLE */
+  /* Make sure the board is ALWAYS visible */
   #board {
     width: 480px;
     height: 480px;
     margin-top: 20px;
+    background: #333; /* debug visibility */
   }
 
   #debugPanel {
@@ -35,46 +37,42 @@
 
 <h2>GPT-4o-mini vs GPT-4o-mini</h2>
 <div id="board"></div>
-
 <div id="debugPanel"></div>
 
 <script>
-// ------------------- CONFIG -------------------
 const KEY_WHITE = "YOUR_FIRST_API_KEY";
 const KEY_BLACK = "YOUR_SECOND_API_KEY";
 const MODEL = "gpt-4o-mini";
-const MOVE_DELAY = 1000; // 1 second
+const MOVE_DELAY = 1000;
 
-// ------------------- SETUP -------------------
-let chess = new Chess();
-let board = Chessboard('board', { position: 'start' });
-
-let debugPanel = document.getElementById("debugPanel");
+let chess;
+let board;
 let debugVisible = false;
 
-// CHANGE F7 → F9
-document.addEventListener("keydown", (e) => {
-  if (e.key === "F9") {
-    debugVisible = !debugVisible;
-    debugPanel.style.display = debugVisible ? "block" : "none";
-  }
-});
-
-// -------------- LOGGING ----------------
 function logDebug(text) {
   let div = document.createElement("div");
   div.textContent = text;
-  debugPanel.appendChild(div);
-  debugPanel.scrollTop = debugPanel.scrollHeight;
+  document.getElementById("debugPanel").appendChild(div);
+  document.getElementById("debugPanel").scrollTop =
+    document.getElementById("debugPanel").scrollHeight;
 }
 
-// ------------------- AI MOVE REQUEST -------------------
+/* Toggle debug panel with the "f" key */
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "f") {
+    debugVisible = !debugVisible;
+    document.getElementById("debugPanel").style.display =
+      debugVisible ? "block" : "none";
+  }
+});
+
+/* AI request */
 async function askModel(apiKey, boardFen, history) {
   const prompt = `
 You are playing chess. Only respond with a legal SAN move.
-Current board FEN: ${boardFen}
-Move history: ${history.join(", ")}
-Your move:
+FEN: ${boardFen}
+Moves: ${history.join(", ")}
+Move:
 `.trim();
 
   logDebug("PROMPT → " + prompt);
@@ -94,37 +92,46 @@ Your move:
   });
 
   const data = await response.json();
-  let moveText = data?.choices?.[0]?.message?.content?.trim();
+  const move = data?.choices?.[0]?.message?.content?.trim();
 
-  logDebug("RESPONSE ← " + moveText);
-
-  return moveText;
+  logDebug("RESPONSE ← " + move);
+  return move;
 }
 
-// ------------------- MAIN LOOP -------------------
+/* Main turn system */
 async function playTurn() {
   if (chess.game_over()) {
-    logDebug("GAME OVER: " + chess.pgn());
+    logDebug("GAME OVER");
     return;
   }
 
-  const turn = chess.turn();
-  const apiKey = turn === "w" ? KEY_WHITE : KEY_BLACK;
-
+  const apiKey = chess.turn() === "w" ? KEY_WHITE : KEY_BLACK;
   const moveText = await askModel(apiKey, chess.fen(), chess.history());
 
   try {
     chess.move(moveText);
     board.position(chess.fen());
-  } catch (err) {
-    logDebug("Invalid move (" + moveText + ") retrying...");
+  } catch {
+    logDebug("INVALID MOVE: " + moveText + " — retrying");
     return setTimeout(playTurn, MOVE_DELAY);
   }
 
   setTimeout(playTurn, MOVE_DELAY);
 }
 
-playTurn();
+/* Initialize AFTER the page loads */
+window.onload = function () {
+  chess = new Chess();
+
+  board = Chessboard('board', {
+    position: 'start'
+  });
+
+  /* force a redraw to prevent invisible board bugs */
+  setTimeout(() => board.resize(), 50);
+
+  playTurn();
+};
 </script>
 
 </body>
