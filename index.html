@@ -7,31 +7,40 @@
 <style>
   body { background:#111; color:#eee; font-family:Arial; }
 
-  /* Make sure the board is ALWAYS visible */
   #board {
     width: 480px;
     height: 480px;
-    margin-top: 20px;
-    background: #333; /* debug visibility */
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    border: 3px solid #444;
+    margin-top:20px;
   }
 
+  .sq {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:38px;
+  }
+
+  .dark { background:#555; }
+  .light { background:#ccc; color:#000; }
+
   #debugPanel {
-    position: fixed;
-    right: 0; top: 0; bottom: 0;
-    width: 350px;
-    background: #222;
-    color: #0f0;
-    padding: 10px;
-    overflow-y: auto;
-    display: none;
-    border-left: 2px solid #555;
+    position:fixed;
+    right:0;top:0;bottom:0;
+    width:350px;
+    background:#222;
+    color:#0f0;
+    padding:10px;
+    overflow-y:auto;
+    display:none;
+    border-left:2px solid #555;
   }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.css"/>
-
 </head>
 <body>
 
@@ -46,91 +55,96 @@ const MODEL = "gpt-4o-mini";
 const MOVE_DELAY = 1000;
 
 let chess;
-let board;
 let debugVisible = false;
 
-function logDebug(text) {
-  let div = document.createElement("div");
-  div.textContent = text;
-  document.getElementById("debugPanel").appendChild(div);
-  document.getElementById("debugPanel").scrollTop =
-    document.getElementById("debugPanel").scrollHeight;
+function createBoard() {
+  let boardDiv = document.getElementById("board");
+  boardDiv.innerHTML = "";
+  let squares = chess.board();
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      let sq = document.createElement("div");
+      sq.classList.add("sq");
+      sq.classList.add((r + c) % 2 === 0 ? "light" : "dark");
+
+      let piece = squares[r][c];
+      if (piece) {
+        let icon = {
+          p:"♟", n:"♞", b:"♝", r:"♜", q:"♛", k:"♚"
+        }[piece.type];
+        sq.textContent = piece.color === "w" ? icon.toUpperCase() : icon;
+      }
+
+      boardDiv.appendChild(sq);
+    }
+  }
 }
 
-/* Toggle debug panel with the "f" key */
-document.addEventListener("keydown", (e) => {
-  if (e.key.toLowerCase() === "f") {
+function logDebug(t) {
+  let d = document.createElement("div");
+  d.textContent = t;
+  document.getElementById("debugPanel").appendChild(d);
+}
+
+document.addEventListener("keydown",(e)=>{
+  if(e.key.toLowerCase()==="f"){
     debugVisible = !debugVisible;
     document.getElementById("debugPanel").style.display =
       debugVisible ? "block" : "none";
   }
 });
 
-/* AI request */
-async function askModel(apiKey, boardFen, history) {
+async function askModel(apiKey, fen, hist) {
   const prompt = `
-You are playing chess. Only respond with a legal SAN move.
-FEN: ${boardFen}
-Moves: ${history.join(", ")}
+You are playing chess. Give only one legal SAN move.
+FEN: ${fen}
+Moves: ${hist.join(", ")}
 Move:
 `.trim();
 
   logDebug("PROMPT → " + prompt);
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + apiKey,
-      "Content-Type": "application/json"
+  let r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method:"POST",
+    headers:{
+      "Authorization":"Bearer "+apiKey,
+      "Content-Type":"application/json"
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 20,
-      temperature: 0.2
+    body:JSON.stringify({
+      model:MODEL,
+      messages:[{role:"user",content:prompt}],
+      max_tokens:20
     })
   });
 
-  const data = await response.json();
-  const move = data?.choices?.[0]?.message?.content?.trim();
-
-  logDebug("RESPONSE ← " + move);
-  return move;
+  let data = await r.json();
+  let mv = data?.choices?.[0]?.message?.content?.trim();
+  logDebug("RESPONSE ← " + mv);
+  return mv;
 }
 
-/* Main turn system */
-async function playTurn() {
-  if (chess.game_over()) {
-    logDebug("GAME OVER");
-    return;
-  }
+async function play() {
+  if (chess.game_over()) return logDebug("GAME OVER");
 
-  const apiKey = chess.turn() === "w" ? KEY_WHITE : KEY_BLACK;
-  const moveText = await askModel(apiKey, chess.fen(), chess.history());
+  let api = chess.turn()==="w" ? KEY_WHITE : KEY_BLACK;
+  let move = await askModel(api, chess.fen(), chess.history());
 
   try {
-    chess.move(moveText);
-    board.position(chess.fen());
+    chess.move(move);
   } catch {
-    logDebug("INVALID MOVE: " + moveText + " — retrying");
-    return setTimeout(playTurn, MOVE_DELAY);
+    logDebug("INVALID MOVE, retrying: "+move);
+    return setTimeout(play, MOVE_DELAY);
   }
 
-  setTimeout(playTurn, MOVE_DELAY);
+  createBoard();
+  setTimeout(play, MOVE_DELAY);
 }
 
-/* Initialize AFTER the page loads */
-window.onload = function () {
+window.onload = () => {
   chess = new Chess();
-
-  board = Chessboard('board', {
-    position: 'start'
-  });
-
-  /* force a redraw to prevent invisible board bugs */
-  setTimeout(() => board.resize(), 50);
-
-  playTurn();
+  createBoard();
+  play();
 };
 </script>
 
