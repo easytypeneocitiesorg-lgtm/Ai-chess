@@ -5,7 +5,14 @@
 <title>AI vs AI Chess</title>
 <style>
   body { background:#111; color:#eee; font-family:Arial; }
-  #board { width: 480px; margin-top:20px; }
+
+  /* MAKE THE BOARD ACTUALLY VISIBLE */
+  #board {
+    width: 480px;
+    height: 480px;
+    margin-top: 20px;
+  }
+
   #debugPanel {
     position: fixed;
     right: 0; top: 0; bottom: 0;
@@ -18,9 +25,11 @@
     border-left: 2px solid #555;
   }
 </style>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.css"/>
+
 </head>
 <body>
 
@@ -38,21 +47,20 @@ const MOVE_DELAY = 1000; // 1 second
 
 // ------------------- SETUP -------------------
 let chess = new Chess();
-let board = Chessboard('board', {
-  position: 'start'
-});
+let board = Chessboard('board', { position: 'start' });
 
 let debugPanel = document.getElementById("debugPanel");
 let debugVisible = false;
 
+// CHANGE F7 → F9
 document.addEventListener("keydown", (e) => {
-  if (e.key === "F7") {
+  if (e.key === "F9") {
     debugVisible = !debugVisible;
     debugPanel.style.display = debugVisible ? "block" : "none";
   }
 });
 
-// -------------- LOGGING (hidden unless F7) ----------------
+// -------------- LOGGING ----------------
 function logDebug(text) {
   let div = document.createElement("div");
   div.textContent = text;
@@ -100,7 +108,7 @@ async function playTurn() {
     return;
   }
 
-  const turn = chess.turn(); // 'w' or 'b'
+  const turn = chess.turn();
   const apiKey = turn === "w" ? KEY_WHITE : KEY_BLACK;
 
   const moveText = await askModel(apiKey, chess.fen(), chess.history());
@@ -109,7 +117,7 @@ async function playTurn() {
     chess.move(moveText);
     board.position(chess.fen());
   } catch (err) {
-    logDebug("Invalid move by model (" + moveText + "), trying again...");
+    logDebug("Invalid move (" + moveText + ") retrying...");
     return setTimeout(playTurn, MOVE_DELAY);
   }
 
